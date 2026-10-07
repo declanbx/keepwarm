@@ -4,6 +4,10 @@ A Claude Code mod that keeps an idle **interactive** session's prompt cache warm
 pause reads the conversation from cache (0.05× input on Opus 5.5) instead of rewriting it (2× input on the
 1-hour TTL).
 
+Inspired by [cachebeat](https://github.com/ARahim3/cachebeat) by ARahim3, a Claude Code skill that keeps the
+prompt cache warm with an inactivity-triggered heartbeat. keepwarm does the same job as a mod: the refresh is a
+tool-less copy of the session sent beside it, so nothing is added to the conversation.
+
 > **Early access.** Mods (plugins of function hooks) are an early-access Claude Code feature: the interface may
 > change between releases, and a mod loads only where Claude Code has the feature switched on. A session that
 > shows no `keepwarm:` status row under the prompt is not running mods.
@@ -28,12 +32,11 @@ pause reads the conversation from cache (0.05× input on Opus 5.5) instead of re
 - **A session left idle refreshes about once an hour for up to 20 h** after your last prompt: about 21 refreshes,
   ~$3.40 for an 800k-token conversation, against ~$6.40 to rewrite those 800k tokens once when you come back.
   Lower `KEEPWARM_MAX_HOURS` if you leave sessions open overnight and rarely return to them.
-- **Where a refresh cannot reach the session's cache, the first one pays a full write.** On some accounts the
-  requests are threaded (see below) and a refresh never reads the conversation's cache: it writes the whole
-  conversation at 2× input, then keepwarm turns itself off for that session. Measured once at 737,647 tokens
-  written, about $5.90 at Opus 5.5 API prices. If `/keepwarm status` reports
-  `off for this session: a refresh inside the hour read … and had to write …` after its first refresh, your
-  account works this way: set `KEEPWARM_OFF=1` in the same `env` block.
+- **Occasionally a refresh cannot reach the session's cache and pays a full write** of the conversation at 2×
+  input; keepwarm then turns itself off for that session. 6 of the 132 refreshes on record did this, on both a
+  Team-plan and a Max-plan account (see below); the largest wrote 737,647 tokens, about $5.90 at Opus 5.5 API
+  prices. If `/keepwarm status` keeps reporting `off for this session: a refresh inside the hour read … and had to
+  write …` on your account, set `KEEPWARM_OFF=1` in the same `env` block.
 
 ## How it works
 
@@ -49,12 +52,17 @@ pause reads the conversation from cache (0.05× input on Opus 5.5) instead of re
   cached tokens; or when there is no reply to fork yet.
 - **Turns itself off for the session** when a refresh inside the hour had to write more of the conversation
   than it could read: the fork could not reach this session's own cache, so refreshing only adds cost.
-  Measured 2026-10-02 on a Team-plan account, where Opus 5.5 requests are **threaded** (the server keeps the
-  conversation and each request sends only the new turn): a fork never reads the thread's cache, the thread was
-  gone after 6-11 min idle in every test, and the main thread's first return after forks read only the shared
-  ~29k system prefix whether keepwarm ran or not (a keepwarm session and a control session at 74 min: 28,876
-  read, ~31.7k written, both). On a Max-plan account Opus 5.5 requests are stateless and refreshes read the
-  whole conversation (430,620 read, 356 written). `/keepwarm on` retries.
+  `/keepwarm on` retries. Of the 132 refreshes on record (2026-10-02 to 10-07, the last 10 kept per session), 6
+  did this: all 5 refreshes on a Team-plan account between 11:37 and 12:55 UTC on 2026-10-02, and 1 on a Max-plan
+  account on 2026-10-06 (28,649 read, 737,647 written). Since 2026-10-03, 68 refreshes in 15 Team-plan sessions
+  read the whole conversation, as Max-plan refreshes do (e.g. 430,620 read, 356 written), so it is not a property
+  of the plan; the cause is not known.
+- **The 1-hour cache it relies on, checked** (575,082 API responses Claude Code logged on one machine, Apr-Oct
+  2026, on a Max-plan and a Team-plan account): Claude Code writes the main conversation's cache at the 1-hour TTL
+  (100% of write tokens on Max, 93% on Team, the rest on one day) and subagents' at the 5-minute TTL (100% on
+  both). After an idle gap of 5-60 min the next main-thread request read the conversation back from cache 99.6%
+  of the time on Max (236 gaps) and 95.3% on Team (215); past 65 min with no keepwarm running, 1 of 19 (Max).
+  keepwarm refreshes only the main conversation; a subagent's cache lapses after 5 idle minutes regardless.
 - **Never headless** (`session.start`'s `isInteractive` is false for `claude -p` and SDK runs).
 - **Never in the way:** if its bookkeeping after a prompt or a tool call fails, the failure goes to the debug log
   and the prompt or tool result passes through unchanged.
