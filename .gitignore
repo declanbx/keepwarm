@@ -1,0 +1,4 @@
+# superseded copies kept beside each file while editing
+*.bak-*
+.DS_Store
+node_modules/

@@ -1,0 +1,7 @@
+{
+  "name": "keepwarm",
+  "version": "0.3.1",
+  "description": "Keeps an idle interactive session's prompt cache warm with one tool-less fork just before the 1-hour cache lapses; /keepwarm on|off|status per session.",
+  "author": { "name": "Declan Brennan" },
+  "types": "./types/index.d.ts"
+}
